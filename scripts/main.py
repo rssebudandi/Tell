@@ -1,10 +1,11 @@
+import matplotlib.pyplot as plt
 import pandas as pd
-import numpy as np
 import warnings
 import streamlit as st
 import plotly.express as px
-from matplotlib.pyplot import hist
+from sklearn.decomposition import PCA
 import seaborn as sns
+from sklearn.preprocessing import StandardScaler
 
 st.title("Telco Analysis")
 
@@ -16,7 +17,7 @@ choice = st.sidebar.selectbox("Select Analysis", (
 def loadData():
     warnings.filterwarnings('ignore')
     pd.set_option('max_column', None)
-    Telco = pd.read_csv('../data/Week1_challenge_data_source.csv', na_values=['?', None])
+    Telco = pd.read_csv('Week1_challenge_data_source.csv', na_values=['?', None])
     return Telco
 
 
@@ -54,6 +55,7 @@ def combineColum():
         lambda x: x['Netflix DL (Bytes)'] + x['Netflix UL (Bytes)'], axis=1)
     Telco['Total Other data volume (in Bytes)'] = Telco.apply(lambda x: x['Other DL (Bytes)'] + x['Other UL (Bytes)'],
                                                               axis=1)
+    Telco['Total data volume (in Bytes)'] = Telco.apply(lambda x: x['Total UL (Bytes)'] + x['Total DL (Bytes)'], axis=1)
     return Telco
 
 
@@ -64,7 +66,7 @@ def aggPerUser(df):
          'Total Gaming data volume (in Bytes)': 'sum', 'Total Social Media data volume (in Bytes)': 'sum',
          'Total Google data volume (in Bytes)': 'sum', 'Total Email data volume (in Bytes)': 'sum',
          'Total Youtube data volume (in Bytes)': 'sum', 'Total Netflix data volume (in Bytes)': 'sum',
-         'Total Other data volume (in Bytes)': 'sum'})
+         'Total Other data volume (in Bytes)': 'sum','Total data volume (in Bytes)':'sum'})
     return Agg_data_goupedby_user_df
 
 
@@ -83,9 +85,8 @@ def histogram(df, column):
 
 @st.cache
 def boxPlot(df, column):
-    p = sns.distplot(df[column])
-    return p
-
+    bx = df.boxplot(column=column, return_type='axes');
+    return bx
 
 
 @st.cache
@@ -93,13 +94,54 @@ def checkSkew(df):
     skewValue = df.skew(axis=1)
     return skewValue
 
+@st.cache
+def scatterPlot(df, colum1, column2):
+    fig = px.scatter(
+        x=df[colum1],
+        y=df[column2],
+    )
+    fig.update_layout(
+        xaxis_title=colum1,
+        yaxis_title=column2,
+    )
+    return fig
+def scatterPlot(colum1, column2):
+    fig = px.scatter(
+        x=colum1,
+        y=column2,
+    )
+    fig.update_layout(
+        xaxis_title=colum1,
+        yaxis_title=column2,
+    )
+    return fig
+
+def calcCorr(df):
+    corrM = df.corr()
+    return corrM
+def scaleData(df):
+
+
+    X_std = StandardScaler().fit_transform(df)
+    return X_std
+def apply_PCA(df):
+    sd=scaleData(df)
+    sklearn_pca = PCA(n_components=2)  # intialise the PCA algorithm
+    Y_sklearn = sklearn_pca.fit_transform(sd)
+
+    return Y_sklearn
+
+
+
+
+
 
 def main():
     if choice == "User_Overview_analysis":
         st.subheader("User Overview analysis")
         sel = st.selectbox("Select choice", (
             "Data variables", "Sample data", "XDR sessions per user",
-            'Non - Graphical Univariate Analysis', 'Graphical Univariate Analysis'))
+            'Non - Graphical Univariate Analysis', 'Graphical Univariate Analysis', 'Bivariate Analysis','Correlation Analysis','Dimensionality Reduction'))
         if sel == "Data variables":
             st.subheader("Data variables")
             variables = dataVariables()
@@ -164,30 +206,54 @@ def main():
                     hist = histogram(agg_per_user_df, "Total Other data volume (in Bytes)")
                     st.plotly_chart(hist)
 
-            elif cb == "box plot":
+        elif sel == "Bivariate Analysis":
+            st.subheader("Bivariate Analysis")
+            rdb = st.radio("Select feature", ("Total Volume vs Gaming volume", "Total volume vs YouTube volume", "Total volume vs Email Volume"))
+            if rdb == "Total Volume vs Gaming volume":
+                st.subheader("Total Volume vs Gaming volume")
                 df = combineColum()
                 agg_per_user_df = aggPerUser(df)
+                sc = scatterPlot(agg_per_user_df, 'Total Gaming data volume (in Bytes)', 'Total data volume (in Bytes)')
+                st.write(sc)
+            elif rdb == "Total volume vs YouTube volume":
+                st.subheader("Total volume vs YouTube volume")
+                df = combineColum()
+                agg_per_user_df = aggPerUser(df)
+                sc = scatterPlot(agg_per_user_df, 'Total Youtube data volume (in Bytes)', 'Total data volume (in Bytes)')
+                st.write(sc)
+            elif rdb == "Total volume vs Email Volume":
+                st.subheader("Total volume vs Email volume")
+                df = combineColum()
+                agg_per_user_df = aggPerUser(df)
+                sc = scatterPlot(agg_per_user_df, 'Total Email data volume (in Bytes)',
+                                 'Total data volume (in Bytes)')
+                st.write(sc)
+        elif sel == "Correlation Analysis":
+            st.subheader("Correlation Analysis")
+            df = combineColum()
+            agg_per_user_df = aggPerUser(df)
+            corr= calcCorr(agg_per_user_df)
+            st.write(corr)
+            st.write("""
+            - The correration coefficients along the diagonal of the table are all equal to 1 because each variable is perfectly correlated with it's self.
+            - It can also be noticed that the correlation matrix is perfectly symmetrical because the values in the top left corner is equal to the value in the bottom right corner
+            - It can also be seen that the highest correration is between data used on google and youtube , which is understanble since people usually go to google to search youtube.
+            - Data spent on gaming has the lowest correrations with each variable, which can be due to the fact that when gaming you wouldn't have time to user other forms""")
+        elif sel == "Dimensionality Reduction":
+            st.subheader("Dimensionality Reduction")
+            df = combineColum()
+            agg_per_user_df = aggPerUser(df)
+            pc=apply_PCA(agg_per_user_df)
+            st.write(pc)
+            b=scatterPlot()
 
-                rd = st.radio("Select feature", ('Gaming', 'YouTube', 'Email', 'Google', 'other'))
-                if rd == "Gaming":
-                    p=boxPlot(agg_per_user_df, "Total Youtube data volume (in Bytes)")
-                    st.plotly_chart(p)
 
 
 
-                elif rd == "YouTube":
-                    hist = histogram(agg_per_user_df, "Total Youtube data volume (in Bytes)")
-                    st.plotly_chart(hist)
 
-                elif rd == "Email":
-                    hist = histogram(agg_per_user_df, "Total Email data volume (in Bytes)")
-                    st.plotly_chart(hist)
-                elif rd == "Google":
-                    hist = histogram(agg_per_user_df, "Total Google data volume (in Bytes)")
-                    st.plotly_chart(hist)
-                elif rd == "other":
-                    hist = histogram(agg_per_user_df, "Total Other data volume (in Bytes)")
-                    st.plotly_chart(hist)
+
+
+
 
 
 
